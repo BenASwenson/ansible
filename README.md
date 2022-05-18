@@ -58,6 +58,10 @@
 - infrastructure management
 - cloud monitoring
 
+# Ansible
+- Ansible is an IT automation tool. It can configure systems, deploy software, and orchestrate more advanced IT tasks such as continuous deployments or zero downtime rolling updates.
+- Ansible manages machines in an agent-less manner. There is never a question of how to upgrade remote daemons or the problem of not being able to manage systems because daemons are uninstalled. Because OpenSSH is one of the most peer-reviewed open source components, security exposure is greatly reduced. Ansible is decentralized–it relies on your existing OS credentials to control access to remote machines.
+
 # Exercise
 - Create 2/3 VMs with vagrant
 - create Ansible controller with 2 agent nodes - web & db
