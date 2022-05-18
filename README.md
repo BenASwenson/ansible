@@ -79,29 +79,87 @@
 - Kubernetes
 
 # Process for setting up 3 instances with Ansible (controller, web, db) using Vagrant
-- copy app directory to remote web instance `scp -r ~/Downloads/starter-code/ vagrant@192.168.33.10:/home/vagrant`
+- Create a file called `vagrantfile` with the following configuration:
+
+```
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+
+# MULTI SERVER/VMs environment
+#
+Vagrant.configure("2") do |config|
+
+# creating first VM called web
+config.vm.define "web" do |web|
+web.vm.box = "bento/ubuntu-18.04"
+# downloading ubuntu 18.04 image
+
+ web.vm.hostname = 'web'
+# assigning host name to the VM
+web.vm.network :private_network, ip: "192.168.33.10"
+# assigning private IP
+#config.hostsupdater.aliases = ["development.web"]
+# creating a link called development.web so we can access web page with this link instread of an IP
+end
+# creating second VM called db
+config.vm.define "db" do |db|
+db.vm.box = "bento/ubuntu-18.04"
+db.vm.hostname = 'db'
+db.vm.network :private_network, ip: "192.168.33.11"
+#config.hostsupdater.aliases = ["development.db"]
+end
+
+ # creating are Ansible controller
+config.vm.define "controller" do |controller|
+controller.vm.box = "bento/ubuntu-18.04"
+controller.vm.hostname = 'controller'
+controller.vm.network :private_network, ip: "192.168.33.12"
+#config.hostsupdater.aliases = ["development.controller"]
+end
+
+end
+```
+- Type `vagrant up` to load the VMs
+  
+- copy app directory to remote web instance 
+  - `scp -r ~/Downloads/starter-code/ vagrant@192.168.33.10:/home/vagrant`
+  - or, within local host, run this command:
+    - `vagrant plugin install vagrant-scp`
+    - Move the app folder to your VM controller with this command:
+      - `vagrant scp <some_local_file_or_dir>[vm_name]:<somewhere_on_the_vm>`
+    - Move the app folder between different VMs with this command:
+      - `ansible web -m copy -a 'src=/home/vagrant/app dest=~/.'`
+  
 - ssh into each and install dependencies one at a time: `vagrant ssh controller` - `vagrant ssh web` - `vagrant ssh db`
 - `sudo apt-get update -y`
 - `sudo apt-get upgrade -y`
-- python dependencies
-  - `sudo apt-get install software-properties-common` 
-- Add python's repo
-  - `sudo apt-add-repository ppa:ansible/ansible`
-- Install Ansible
-  - `sudo apt-get install ansible`
-  - `ansible --version`
+
+- Run these commands in the controller VM:
+  - python dependencies
+    - `sudo apt-get install software-properties-common` 
+  - Add python's repo
+    - `sudo apt-add-repository ppa:ansible/ansible`
+  - Install Ansible
+    - `sudo apt-get install ansible`
+    - `ansible --version`
+  
 - Now check for connection between controller and agent nodes
   - `ssh vagrant@192.168.33.11` (db ip)
   - password: vagrant
   - `sudo apt-get update -y`    
   - `ssh vagrant@192.168.33.10` (web ip)
   - `sudo apt-get update -y`
-- Let Ansible know there are two nodes
+  
+- Let Ansible know there are two nodes from the controller VM
   - `cd /etc/ansible`
   - `ls`
-  - optional install tool => `sudo apt-get install tree -y`
+  - optional install tool to list directories nicely => `sudo apt-get install tree -y`
   - `tree`
-  - In the 'hosts' file we need to enter the two nodes
+  - Edit the 'hosts' file by adding the two nodes
     - `sudo nano hosts`
     - add the the two nodes in the 'hosts' file in 'example 1' in the following format:
         ```
@@ -110,9 +168,10 @@
         [db]
         192.168.33.11 ansible_connection=ssh ansible_ssh_user=vagrant ansible_ssh_pass=vagrant
         ```
-      - `cat hosts` to confirm it's saved
-      - `ansible web -m ping` (ping from controller to web instance)
-      - `ansible db -m ping` (ping from controller to db instance)
+- `cat hosts` to confirm it's saved
+- `ansible web -m ping` (ping from controller to web instance)
+- `ansible db -m ping` (ping from controller to db instance)
+- We should see Ping: Pong
   
 - For additional machines not created by us, find out more information about them with 'adhoc' commands
   - `ansible web -a "uname -a" (for single machine)
@@ -120,25 +179,112 @@
   - copy file from one to another
     - `ansible web -m copy -a 'src=/etc/ansible/test.txt dest=/home/vagrant'`
 
-- We'll need to check space availability, permissions, OS, python versions - required dependencies, network, memory, disk space
-  - Create script full of adhoc commands to automate process (playbooks)
-    - `sudo nano nginx-playbook.yml`
+- if not already, go to `/etc/ansible`
+ 
+- Create script full of adhoc commands to automate process (playbooks)
+  - `sudo nano nginx-playbook.yml`
     - Once this file opens, configure as follows:
 
     ```
-    # creating a playbook to configure nginx web server in web machine
-    # YAML YML file starts three dashes ---
-    ---
-    # where do we want to install nginx
-      - hosts: web
-    # do we want to see logs - gather facts
-      gather_facts: yes
-    # what permissions do we need to run this playbook
-      become: true
-    # what is the name of the package
-      tasks:
-       - name: install Nginx
-         apt: pkg=nginx state=present
+---
+        # where do we want to install
+- hosts: web
+
+        # get the facts
+  gather_facts: yes
+
+        # changes access to root user
+  become: true
+
+  tasks:
+
+        # Purge Nginx
+  - name: Purge Nginx
+    shell: |
+      sudo apt-get purge nginx nginx-common -y
+
+        # Install Nginx
+  - name: Install nginx
+    apt: pkg=nginx state=present
+
+        # Set up reverse proxy
+
+  - name: Remove Nginx default file
+    file:
+      path: /etc/nginx/sites-enabled/default
+      state: absent
+
+  - name: Create file reverse_proxy.config with read and write permissions for everyone
+    file:
+      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+      state: touch
+      mode: '666'
+
+  - name: Inject lines into reverse_proxy.config
+    blockinfile:
+      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+      block: |
+        server{
+          listen 80;
+          server_name development.local;
+          location / {
+              proxy_pass http://localhost:3000;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host $host;
+              proxy_cache_bypass $http_upgrade;
+          }
+        }
+
+        # Links the new configuration file to NGINX’s sites-enabled using a command.
+
+  - name: link reverse_proxy.config
+    file:
+      src: /etc/nginx/sites-enabled/reverse_proxy.conf
+      dest: /etc/nginx/sites-available/reverse_proxy.conf
+      state: link
+
+  - name: Restart Nginx
+    shell: |
+      sudo systemctl restart nginx
+
+        # Gets all the dependencies
+
+  - name: Install software-properties-common
+    apt: pkg=software-properties-common state=present
+
+  - name: Add nodejs apt key
+    apt_key:
+      url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+      state: present
+
+  - name: Install nodejs
+    apt_repository:
+      repo: deb https://deb.nodesource.com/node_13.x bionic main
+      update_cache: yes
+
+  - name: Install nodejs
+    apt:
+      update_cache: yes
+      name: nodejs
+      state: present
+
+  - name: Install npm
+    shell: |
+      cd app/
+      npm install
+
+  - name: Install pm2
+    npm:
+      name: pm2
+      global: yes
+
+  - name: run app
+    shell: |
+      cd app/
+      npm start
     ```
-- find the status of nginx once the playbook is run
-  - `sudo ansible-playbook nginx-playbook.yml`
+- Run the yml file with the command:
+  - `sudo ansible-playbook nginx-playbook.yml` or `ansible-playbook nginx-playbook.yml`
+- Go to the web VM's ip in browser and check if it works.
