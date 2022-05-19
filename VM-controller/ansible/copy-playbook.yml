@@ -1,0 +1,10 @@
+---
+- hosts: all
+gather_facts: no
+
+tasks:
+- name: ansible copy file from remote to local
+fetch:
+src: /etc/ansible/ec2-playbook.yml
+dest: ~/Downloads/test/
+flat: yes

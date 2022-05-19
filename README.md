@@ -178,6 +178,8 @@ end
   - `ansible all -a "uname -a" (for all machines)
   - copy file from one to another
     - `ansible web -m copy -a 'src=/etc/ansible/test.txt dest=/home/vagrant'`
+  - download from remote to local
+    - `sftp -r vagrant@192.168.33.12:/etc/ansible ~/Downloads/test`
 
 - if not already, go to `/etc/ansible`
  
@@ -288,3 +290,58 @@ end
 - Run the yml file with the command:
   - `sudo ansible-playbook nginx-playbook.yml` or `ansible-playbook nginx-playbook.yml`
 - Go to the web VM's ip in browser and check if it works.
+
+
+# Installing AWS CLI on controller
+- ssh into vagrant controller `vagrant ssh controller`
+- `sudo apt-get update -y`
+- `Sudo apt-get upgrade -y`
+- `Sudo apt-get install python3-pip`
+- `Pip3 install awscli`
+- `alias python=python3`
+- `python --version`
+- `sudo apt update -y`
+- `sudo apt-get intall tree -y`
+- `sudo apt-add-repository --yes --update ppa:ansible/ansible`
+- `sudo apt-get install ansible -y`
+- `sudo apt-get install python3-pip`
+- `pip3 install awscli`
+- `pip3 install boto boto3`
+
+
+- set up Ansible vault - AWS access & secret keys
+- folder structure for ansible-vault
+  - in location '/etc/ansible/hosts'
+  - `mkdir group_vars`
+  - `cd group_vars`
+  - `mkdir all`
+  - `cd all`
+  - `ansible-vault create pass.yml`
+  - `sudo vim pass.yml`
+  - enter password twice
+    ```
+    ec2_access_key: <akdjdjd>
+    ec2_secret_key: <akjdljld>
+    ```
+  - `esc :wq! enter`
+  - `ii`
+  
+- cd to /etc/ansible for running a playbook with command as follows:
+  - `sudo ansible-playbook file.yml --ask-vault-pass`
+
+- ssh from the controller to aws
+  - `cd ~/.ssh`
+  - `sudo nano eng119.yml` to create and open file
+  - go to local host and copy pem file and paste into eng119.yml and close
+  - change permissions `sudo chmod 400 eng119.pem`
+- now let the hosts file know which method to authenticate with
+  - `sudo nano hosts`
+  ```
+  [local]
+  localhost ansible_python_interpreter=/usr/local/bin/python3
+  [aws]
+  ec2-instance ansible_host=ec2-public-ip ansible_user=ubuntu ansible_ssh_private_key_file=/.ssh/eng119.pem
+  ```
+
+
+

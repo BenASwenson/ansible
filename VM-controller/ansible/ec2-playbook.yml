@@ -1,0 +1,77 @@
+# AWS playbook
+---
+
+- hosts: localhost
+  connection: local
+  gather_facts: False
+
+  vars:
+    key_name: eng-119
+    region: eu-west-1
+    image: ami-0d4bf6467a424aa2d # Ubuntu Server 18.04 LTS
+    id: "eng110_benswen_app_ami"
+    sec_group: "056be79648a9726ef"
+
+  pre_tasks:
+    - name: Ensure boto and boto3 modules are installed
+      pip:
+        name: ["boto3", "botocore"]
+        extra_args: "--user"
+
+    - name: manually install pip
+      shell: curl https://bootstrap.pypa.io/pip/2.7/get-pip.py | python
+      become: true
+  
+  tasks:
+
+    - name: Facts
+      block:
+
+      - name: Get instances facts
+        ec2_instance_facts:
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+          region: "{{ region }}"
+        register: result
+
+      tags: always
+
+
+    - name: Provisioning EC2 instances
+      block:
+
+      - name: Create security group
+        ec2_group:
+          name: "{{ sec_group }}"
+          description: "Sec group for app {{ id }}"
+          # vpc_id: 12345
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+          rules:
+            - proto: tcp
+              ports:
+                - 22
+              cidr_ip: 0.0.0.0/0
+              rule_desc: allow all on ssh port
+        register: result_sec_group
+
+      - name: Provision instance(s)
+        ec2:
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
+          key_name: "{{ key_name }}"
+          id: "{{ id }}"
+          group_id: "{{ result_sec_group.group_id }}"
+          image: "{{ eng110_benswen_app_ami }}"
+          instance_type: t2.micro
+          region: "{{ eu-west-1 }}"
+          wait: true
+          count: 1
+          # exact_count: 2
+          # count_tag:
+          #   Name: App
+          # instance_tags:
+          #   Name: App
+
+      tags: ['never', 'create_ec2']

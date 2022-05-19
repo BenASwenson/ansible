@@ -1,0 +1,89 @@
+---
+# where do we want to install
+- hosts: web
+
+# get the facts
+  gather_facts: yes
+
+# changes access to root user
+  become: true
+
+  tasks:
+
+# purge nginx
+  - name: Purge Nginx
+    shell: |
+      sudo apt-get purge nginx nginx-common -y
+
+# install nginx
+  - name: install nginx
+    apt: pkg=nginx state=present
+
+# set up reverse proxy
+#  - name: remove nginx default file
+#    file:
+#      path: /etc/nginx/sites-enabled/default
+#      state: absent
+#  - name: Create file reverse_proxy.config with read and write permissions for everyone
+#    file:
+#      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+#      state: touch
+#      mode: '666'
+
+#  - name: Inject lines into reverse_proxy.config
+#    blockinfile:
+#      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+#      block: |
+#        server{
+#          listen 80;
+#          server_name development.local;
+#          location / {
+#              proxy_pass http://localhost:3000;
+#              proxy_http_version 1.1;
+#              proxy_set_header Upgrade $http_upgrade;
+#              proxy_set_header Connection 'upgrade';
+#              proxy_set_header Host $host;
+#              proxy_cache_bypass $http_upgrade;
+#          }
+#        }
+
+# Links the new configuration file to NGINX's sites-enabled using a command
+#  - name: link reverse_proxy.config
+#    file:
+#      src: /etc/nginx/sites-enabled/reverse_proxy.conf
+#      dest: /etc/nginx/sites-enabled/reverse_proxy.conf
+#      state: link
+
+#  - name: restart Nginx
+#    shell: |
+#      sudo systemctl restart nginx
+
+# Gets all the dependencies
+
+  - name: Install software-properties-common
+    apt: pkg=software-properties-common state=present
+
+  - name: Add nodejs apt key
+    apt_key:
+      url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+      state: present
+
+  - name: install NodeJS
+    apt_repository:
+      repo: deb https://deb.nodesource.com/node_13.x bionic main
+      update_cache: yes
+
+  - name: Install npm
+    shell: |
+      cd starter-code/app/
+      npm install
+
+  - name: Install pm2
+    npm:
+      name: pm2
+      global: yes
+
+  - name: run app
+    shell: |
+      cd starter-code/app
+      npm start
