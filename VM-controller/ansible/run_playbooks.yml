@@ -1,0 +1,16 @@
+---
+# Run Mongodb Playbook
+- name: Running MongoDB Playbook
+  import_playbook: set_up_db.yml
+
+# Run Nginx Playbook
+- name: Running Nginx Playbook
+  import_playbook: set_up_nginx.yml
+
+# Run Dependencies Playbook
+- name: Running Install Dependencies Playbook
+  import_playbook: install_dependencies.yml
+
+# Run App Playbook
+- name: Running App Playbook
+  import_playbook: run_app.yml

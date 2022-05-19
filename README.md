@@ -293,55 +293,519 @@ end
 
 
 # Installing AWS CLI on controller
+
 - ssh into vagrant controller `vagrant ssh controller`
-- `sudo apt-get update -y`
-- `Sudo apt-get upgrade -y`
-- `Sudo apt-get install python3-pip`
-- `Pip3 install awscli`
-- `alias python=python3`
-- `python --version`
-- `sudo apt update -y`
-- `sudo apt-get intall tree -y`
-- `sudo apt-add-repository --yes --update ppa:ansible/ansible`
-- `sudo apt-get install ansible -y`
-- `sudo apt-get install python3-pip`
-- `pip3 install awscli`
-- `pip3 install boto boto3`
+```
+sudo apt update -y
+sudo apt upgrade -y
+sudo apt install python
+sudo apt install python-pip -y
+sudo apt install python3-pip
+alias python=python3
+sudo python3 -m pip install botocore==1.26.0
+sudo python3 -m pip install awscli==1.24.0 botocore==1.26.0
+pip3 install boto boto3==1.23.0 botocore==1.26.0
+sudo apt-get install tree -y
+sudo apt-add-repository --yes --update ppa:ansible/ansible
+sudo apt-get install ansible -y
+```
 
 
 - set up Ansible vault - AWS access & secret keys
 - folder structure for ansible-vault
-  - in location '/etc/ansible/hosts'
-  - `mkdir group_vars`
+  - in location '/etc/ansible'
+  - `sudo mkdir group_vars`
   - `cd group_vars`
   - `mkdir all`
   - `cd all`
-  - `ansible-vault create pass.yml`
-  - `sudo vim pass.yml`
+  - `sudo ansible-vault create pass.yml`
   - enter password twice
     ```
-    ec2_access_key: <akdjdjd>
-    ec2_secret_key: <akjdljld>
+    ec2_access_key: key here
+    ec2_secret_key: key here
     ```
-  - `esc :wq! enter`
-  - `ii`
+  - to save and exit, press esc and then enter `:wq!` and press enter.
+  - `sudo cat pass.yml`
+
+  - ssh from the controller to aws
+  - `cd ~/.ssh`
+  - `sudo nano eng119.pem`
+  - go to local host and copy pem file and paste into eng119.pem and close
+  - change permissions `sudo chmod 400 eng119.pem`
+  - `ssh-keygen -y -f ~/.ssh/file_name.pem > ~/.ssh/file_name.pub`
   
 - cd to /etc/ansible for running a playbook with command as follows:
   - `sudo ansible-playbook file.yml --ask-vault-pass`
 
-- ssh from the controller to aws
-  - `cd ~/.ssh`
-  - `sudo nano eng119.yml` to create and open file
-  - go to local host and copy pem file and paste into eng119.yml and close
-  - change permissions `sudo chmod 400 eng119.pem`
+
 - now let the hosts file know which method to authenticate with
   - `sudo nano hosts`
   ```
   [local]
   localhost ansible_python_interpreter=/usr/local/bin/python3
+
   [aws]
-  ec2-instance ansible_host=ec2-public-ip ansible_user=ubuntu ansible_ssh_private_key_file=/.ssh/eng119.pem
+  ec2-instance ansible_host=ec2-54-216-49-215.eu-west-1.compute.amazonaws.com ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/eng119.pem
+
+  [db]
+  ec2-instance-db ansible_host=ec2-34-245-27-166.eu-west-1.compute.amazonaws.com ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/eng119.pem
   ```
+
+  - We'll need the following to create an EC2 instance through Ansible:
+    - AMI ID
+    - Security Group ID
+    - Key name
+    - EC2 name
+    - EC2 tag name
+  
+  - `/etc/ansible`
+
+# EC2 setup playbook
+  - `sudo nano set_up_ec2.yml`
+  - set up Ansible playbook in the following format:
+  
+  ```
+  ---
+  - hosts: localhost
+    connection: local
+    gather_facts: True
+    become: True
+    vars:
+      key_name: eng119
+      region: eu-west-1
+      image: ami-0d4bf6467a424aa2d # Ubuntu Server 18.04 LTS
+      id: "eng110_benswen_app_from_ansible"
+      security_group_id: "sg-0e9e2d55bfe179cb4"
+      subnet_id: "subnet-0429d69d55dfad9d2"
+      ansible_python_interpreter: /usr/bin/python3
+
+    tasks:
+
+      - name: Facts
+        block:
+
+        - name: Get instances facts
+          ec2_instance_facts:
+            aws_access_key: "{{ec2_access_key}}"
+            aws_secret_key: "{{ec2_secret_key}}"
+            region: "{{ region }}"
+          register: result
+
+      - name: Provisioning EC2 instances
+        block:
+
+        - name: Upload public key to AWS
+          ec2_key:
+            name: "{{ key_name }}"
+            key_material: "{{ lookup('file', '~/.ssh/{{ key_name }}.pub') }}"
+            region: "{{ region }}"
+            aws_access_key: "{{ec2_access_key}}"
+            aws_secret_key: "{{ec2_secret_key}}"
+
+        - name: Provision instance(s)
+          ec2:
+            aws_access_key: "{{ec2_access_key}}"
+            aws_secret_key: "{{ec2_secret_key}}"
+            assign_public_ip: true
+            key_name: "{{ key_name }}"
+            id: "{{ id }}"
+            vpc_subnet_id: "{{ subnet_id }}"
+            group_id: "{{ security_group_id }}"
+            image: "{{ image }}"
+            instance_type: t2.micro
+            region: "{{ region }}"
+            wait: true
+            count: 1
+            instance_tags:
+              Name: eng110_benswen_app_from_ansible
+
+        tags: ['never', 'create_ec2']
+
+- After updating the IP in hosts, test connection 
+  `sudo ansible aws -m ping --ask-vault-pass`
+
+# EC2 App setup playbook
+- create ancible playbook to set up app
+  - `sudo nano set_up_app.yml`
+```
+---
+        # where do we want to install
+- hosts: aws
+
+        # get the facts
+  gather_facts: yes
+
+        # changes access to root user
+  become: true
+
+  tasks:
+
+        # Purge Nginx
+  - name: Purge Nginx
+    shell: |
+      sudo apt-get purge nginx nginx-common -y
+
+        # Install Nginx
+  - name: Install nginx
+    apt: pkg=nginx state=present
+
+        # Set up reverse proxy
+
+  - name: Remove Nginx default file
+    file:
+      path: /etc/nginx/sites-enabled/default
+      state: absent
+
+  - name: Create file reverse_proxy.config with read and write permissions for everyone
+    file:
+      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+      state: touch
+      mode: '666'
+
+  - name: Inject lines into reverse_proxy.config
+    blockinfile:
+      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+      block: |
+        server{
+          listen 80;
+          server_name development.local;
+          location / {
+              proxy_pass http://localhost:3000;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host $host;
+              proxy_cache_bypass $http_upgrade;
+          }
+        }
+
+        # Links the new configuration file to NGINX’s sites-enabled using a command.
+
+  - name: link reverse_proxy.config
+    file:
+      src: /etc/nginx/sites-enabled/reverse_proxy.conf
+      dest: /etc/nginx/sites-available/reverse_proxy.conf
+      state: link
+
+  - name: Restart Nginx
+    shell: |
+      sudo systemctl restart nginx
+
+        # Gets all the dependencies
+
+  - name: Install software-properties-common
+    apt: pkg=software-properties-common state=present
+
+  - name: Add nodejs apt key
+    apt_key:
+      url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+      state: present
+
+  - name: Install nodejs
+    apt_repository:
+      repo: deb https://deb.nodesource.com/node_13.x bionic main
+      update_cache: yes
+
+  - name: Install nodejs
+    apt:
+      update_cache: yes
+      name: nodejs
+      state: present
+
+  - name: Install npm
+    shell: |
+      cd app/
+      npm install
+
+  - name: Install pm2
+    npm:
+      name: pm2
+      global: yes
+
+  - name: Run app with specified environment variable
+    shell: |
+      cd app/
+      node seeds/seed.js
+      npm start
+    environment:
+      DB_HOST: mongodb://34.245.27.166:27017/posts
+```
+
+- `sudo ansible-playbook playbook.yml --ask-vault-pass` - to run and check functionality
+- `ansible-playbook playbook.yml --ask-vault-pass --tags create_ec2` - to execute task
+
+- check to see the ec2's public IP works in the browser, then continue to setting up the DB.  We'll need a different AMI id and Security Group.  
+
+# EC2 db setup playbook
+  `sudo nano set_up_ec2_db`
+```
+---
+- hosts: localhost
+  connection: local
+  gather_facts: True
+  become: True
+  vars:
+    key_name: eng119
+    region: eu-west-1
+    image: ami-0a3de117d361f0fd4
+    id: "eng110_benswen_db_from_ansible"
+    security_group_id: "06b6171ac86c12b78"
+    subnet_id: "subnet-0429d69d55dfad9d2"
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+
+    - name: Facts
+      block:
+
+      - name: Get instances facts
+        ec2_instance_facts:
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
+          region: "{{ region }}"
+        register: result
+
+    - name: Provisioning EC2 instances
+      block:
+
+      - name: Upload public key to AWS
+        ec2_key:
+          name: "{{ key_name }}"
+          key_material: "{{ lookup('file', '~/.ssh/{{ key_name }}.pub') }}"
+          region: "{{ region }}"
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
+
+      - name: Provision instance(s)
+        ec2:
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
+          assign_public_ip: true
+          key_name: "{{ key_name }}"
+          id: "{{ id }}"
+          vpc_subnet_id: "{{ subnet_id }}"
+          group_id: "{{ security_group_id }}"
+          image: "{{ image }}"
+          instance_type: t2.micro
+          region: "{{ region }}"
+          wait: true
+          count: 1
+          instance_tags:
+            Name: eng110_benswen_db_from_ansible
+
+      tags: ['never', 'create_ec2']
+```
+
+# install MongoDB playbook
+- `sudo nano set_up_db.yml` and the following:
+```
+---
+
+# Specifies the host
+- hosts: db
+
+# Get the facts
+  gather_facts: yes
+
+# Give us admin access
+  become: true
+
+  tasks:
+
+# Installs mongodb
+  - name: Install mongodb
+    apt: pkg=mongodb state=present
+
+# Deletes the configuration file as we need to make changes to it
+  - name: Delete mongodb.conf file
+    file:
+      path: /etc/mongodb.conf
+      state: absent
+
+# Create a new file called mongodb.conf with read and write permissions for everyone
+
+  - name: Create new mongodb.conf file with read and write permissions for everyone
+    file:
+      path: /etc/mongodb.conf
+      state: touch
+      mode: '666'
+
+# Fills the file with the information again but with bindIp being 0.0.0.0
+  - name: Inject lines into the newly created mongodb.conf
+    blockinfile:
+      path: /etc/mongodb.conf
+      block: |
+        "storage:
+          dbPath: /var/lib/mongodb
+          journal:
+            enabled: true
+        systemLog:
+          destination: file
+          logAppend: true
+          path: /var/log/mongodb/mongod.log
+        net:
+          port: 27017
+          bindIp: 0.0.0.0"
+```
+- check to see if we can access the /posts page:
+  - `sudo ansible-playbook set_up_app.yml --ask-vault-pass` 
+  - may need to check DB instance security group if we can't access.
+  - SSH - my ip
+  - Type Custom TCP - port 27017 - source - app ec2 ip/32 - description - app ip
+
+  # set_up_nginx.yml
+  `sudo nano set_up_nginx.yml`
+```
+---
+        # where do we want to install
+- hosts: aws
+
+        # get the facts
+  gather_facts: yes
+
+        # changes access to root user
+  become: true
+
+  tasks:
+
+        # Purge Nginx
+  - name: Purge Nginx
+    shell: |
+      sudo apt-get purge nginx nginx-common -y
+
+        # Install Nginx
+  - name: Install nginx
+    apt: pkg=nginx state=present
+
+        # Set up reverse proxy
+
+  - name: Remove Nginx default file
+    file:
+      path: /etc/nginx/sites-enabled/default
+      state: absent
+
+  - name: Create file reverse_proxy.config with read and write permissions for everyone
+    file:
+      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+      state: touch
+      mode: '666'
+
+  - name: Inject lines into reverse_proxy.config
+    blockinfile:
+      path: /etc/nginx/sites-enabled/reverse_proxy.conf
+      block: |
+        server{
+          listen 80;
+          server_name development.local;
+          location / {
+              proxy_pass http://localhost:3000;
+              proxy_http_version 1.1;
+              proxy_set_header Upgrade $http_upgrade;
+              proxy_set_header Connection 'upgrade';
+              proxy_set_header Host $host;
+              proxy_cache_bypass $http_upgrade;
+          }
+        }
+
+        # Links the new configuration file to NGINX’s sites-enabled using a command.
+
+  - name: link reverse_proxy.config
+    file:
+      src: /etc/nginx/sites-enabled/reverse_proxy.conf
+      dest: /etc/nginx/sites-available/reverse_proxy.conf
+      state: link
+
+  - name: Restart Nginx
+    shell: |
+      sudo systemctl restart nginx
+```
+# install_dependencies
+- `sudo nano install_dependencies.yml`
+```
+---
+# where do we want to install
+- hosts: aws
+
+  # get the facts
+  gather_facts: yes
+
+  # changes access to root user
+  become: true
+
+  tasks:
+
+  - name: Install software-properties-common
+    apt: pkg=software-properties-common state=present
+
+  - name: Add nodejs apt key
+    apt_key:
+      url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+      state: present
+
+  - name: Install nodejs
+    apt_repository:
+      repo: deb https://deb.nodesource.com/node_13.x bionic main
+      update_cache: yes
+
+  - name: Install nodejs
+    apt:
+      update_cache: yes
+      name: nodejs
+      state: present
+
+  - name: Install npm
+    shell: |
+      cd app/
+      npm install
+
+  - name: Install pm2
+    npm:
+      name: pm2
+      global: yes
+```
+# run_app.yml
+`sudo nano run_app.yml`
+```
+---
+  # where do we want to install
+- hosts: aws
+
+  # get the facts
+  gather_facts: yes
+
+  # changes access to root user
+  become: true
+
+  tasks:
+
+  - name: Run app with specified environment variable
+    shell: |
+      cd app/
+      node seeds/seed.js
+      npm start
+    environment:
+      DB_HOST: mongodb://34.245.27.166:27017/posts
+```
+# run_playbooks.yml
+```
+---
+# Run Mongodb Playbook
+- name: Running MongoDB Playbook
+  import_playbook: set_up_db.yml
+
+# Run Nginx Playbook
+- name: Running Nginx Playbook
+  import_playbook: set_up_nginx.yml
+
+# Run Dependencies Playbook
+- name: Running Install Dependencies Playbook
+  import_playbook: install_dependencies.yml
+
+# Run App Playbook
+- name: Running App Playbook
+  import_playbook: run_app.yml
+```
+- `sudo ansible-playbook run_playbooks.yml --ask-vault-pass` to run the playbook above
 
 
 

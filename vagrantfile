@@ -33,7 +33,7 @@ end
 config.vm.define "controller" do |controller|
 controller.vm.box = "bento/ubuntu-18.04"
 controller.vm.hostname = 'controller'
-controller.vm.network :private_network, ip: "192.168.33.12"
+controller.vm.network :private_network, ip: "192.168.33.11"
 #config.hostsupdater.aliases = ["development.controller"]
 end
 

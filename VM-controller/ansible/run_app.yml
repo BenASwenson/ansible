@@ -1,0 +1,19 @@
+---
+  # where do we want to install
+- hosts: aws
+
+  # get the facts
+  gather_facts: yes
+
+  # changes access to root user
+  become: true
+
+  tasks:
+
+  - name: Run app with specified environment variable
+    shell: |
+      cd app/
+      node seeds/seed.js
+      npm start
+    environment:
+      DB_HOST: mongodb://34.245.27.166:27017/posts

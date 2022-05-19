@@ -3,24 +3,25 @@
 
 - hosts: localhost
   connection: local
-  gather_facts: False
+  gather_facts: true
 
   vars:
-    key_name: eng-119
+    key_name: "id_rsa"
     region: eu-west-1
     image: ami-0d4bf6467a424aa2d # Ubuntu Server 18.04 LTS
-    id: "eng110_benswen_app_ami"
+    id: "eng110_benswen_ansible_instance"
     sec_group: "056be79648a9726ef"
+    ansible_python_interpreter: /usr/bin/python3
 
-  pre_tasks:
-    - name: Ensure boto and boto3 modules are installed
-      pip:
-        name: ["boto3", "botocore"]
-        extra_args: "--user"
+ # pre_tasks:
+  #  - name: Ensure boto and boto3 modules are installed
+   #   pip:
+    #    name: ["boto3", "botocore"]
+     #   extra_args: "--user"
 
-    - name: manually install pip
-      shell: curl https://bootstrap.pypa.io/pip/2.7/get-pip.py | python
-      become: true
+   # - name: manually install pip
+    #  shell: curl https://bootstrap.pypa.io/pip/2.7/get-pip.py | python
+     # become: true
   
   tasks:
 
@@ -39,6 +40,14 @@
 
     - name: Provisioning EC2 instances
       block:
+
+      - name: Upload public key to AWS
+        ec2_key:
+          name: "{{ key_name }}"
+          key_material: "{{ lookup('file', '~/.ssh/{{ key_name }}.pub') }}"
+          region: "{{ region }}"
+          aws_access_key: "{{ ec2_access_key }}"
+          aws_secret_key: "{{ ec2_secret_key }}"
 
       - name: Create security group
         ec2_group:
@@ -62,7 +71,7 @@
           aws_secret_key: "{{ ec2_secret_key }}"
           key_name: "{{ key_name }}"
           id: "{{ id }}"
-          group_id: "{{ result_sec_group.group_id }}"
+          group_id: "{{ sec_group }}"
           image: "{{ eng110_benswen_app_ami }}"
           instance_type: t2.micro
           region: "{{ eu-west-1 }}"
@@ -73,5 +82,7 @@
           #   Name: App
           # instance_tags:
           #   Name: App
+          instance_tags:
+            Name: eng110_benswen_ansible_instance
 
       tags: ['never', 'create_ec2']
