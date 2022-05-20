@@ -1,1 +1,1 @@
-.vagrant # ignore vagrant directory
+.vagrant/* # ignore vagrant directory
