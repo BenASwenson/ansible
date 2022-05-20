@@ -187,7 +187,7 @@ end
   - `sudo nano nginx-playbook.yml`
     - Once this file opens, configure as follows:
 
-    ```
+```
 ---
         # where do we want to install
 - hosts: web
@@ -286,7 +286,7 @@ end
     shell: |
       cd app/
       npm start
-    ```
+```
 - Run the yml file with the command:
   - `sudo ansible-playbook nginx-playbook.yml` or `ansible-playbook nginx-playbook.yml`
 - Go to the web VM's ip in browser and check if it works.
@@ -364,171 +364,171 @@ sudo apt-get install ansible -y
   - `sudo nano set_up_ec2.yml`
   - set up Ansible playbook in the following format:
   
-  ```
-  ---
-  - hosts: localhost
-    connection: local
-    gather_facts: True
-    become: True
-    vars:
-      key_name: eng119
-      region: eu-west-1
-      image: ami-0d4bf6467a424aa2d # Ubuntu Server 18.04 LTS
-      id: "eng110_benswen_app_from_ansible"
-      security_group_id: "sg-0e9e2d55bfe179cb4"
-      subnet_id: "subnet-0429d69d55dfad9d2"
-      ansible_python_interpreter: /usr/bin/python3
-
-    tasks:
-
-      - name: Facts
-        block:
-
-        - name: Get instances facts
-          ec2_instance_facts:
-            aws_access_key: "{{ec2_access_key}}"
-            aws_secret_key: "{{ec2_secret_key}}"
-            region: "{{ region }}"
-          register: result
-
-      - name: Provisioning EC2 instances
-        block:
-
-        - name: Upload public key to AWS
-          ec2_key:
-            name: "{{ key_name }}"
-            key_material: "{{ lookup('file', '~/.ssh/{{ key_name }}.pub') }}"
-            region: "{{ region }}"
-            aws_access_key: "{{ec2_access_key}}"
-            aws_secret_key: "{{ec2_secret_key}}"
-
-        - name: Provision instance(s)
-          ec2:
-            aws_access_key: "{{ec2_access_key}}"
-            aws_secret_key: "{{ec2_secret_key}}"
-            assign_public_ip: true
-            key_name: "{{ key_name }}"
-            id: "{{ id }}"
-            vpc_subnet_id: "{{ subnet_id }}"
-            group_id: "{{ security_group_id }}"
-            image: "{{ image }}"
-            instance_type: t2.micro
-            region: "{{ region }}"
-            wait: true
-            count: 1
-            instance_tags:
-              Name: eng110_benswen_app_from_ansible
-
-        tags: ['never', 'create_ec2']
-
-- After updating the IP in hosts, test connection 
-  `sudo ansible aws -m ping --ask-vault-pass`
-
-# EC2 App setup playbook
-- create ancible playbook to set up app
-  - `sudo nano set_up_app.yml`
 ```
 ---
-        # where do we want to install
-- hosts: aws
-
-        # get the facts
-  gather_facts: yes
-
-        # changes access to root user
-  become: true
+- hosts: localhost
+  connection: local
+  gather_facts: True
+  become: True
+  vars:
+    key_name: eng119
+    region: eu-west-1
+    image: ami-0d4bf6467a424aa2d # Ubuntu Server 18.04 LTS
+    id: "eng110_benswen_app_from_ansible"
+    security_group_id: "sg-0e9e2d55bfe179cb4"
+    subnet_id: "subnet-0429d69d55dfad9d2"
+    ansible_python_interpreter: /usr/bin/python3
 
   tasks:
 
-        # Purge Nginx
-  - name: Purge Nginx
-    shell: |
-      sudo apt-get purge nginx nginx-common -y
+    - name: Facts
+      block:
 
-        # Install Nginx
-  - name: Install nginx
-    apt: pkg=nginx state=present
+      - name: Get instances facts
+        ec2_instance_facts:
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
+          region: "{{ region }}"
+        register: result
 
-        # Set up reverse proxy
+    - name: Provisioning EC2 instances
+      block:
 
-  - name: Remove Nginx default file
-    file:
-      path: /etc/nginx/sites-enabled/default
-      state: absent
+      - name: Upload public key to AWS
+        ec2_key:
+          name: "{{ key_name }}"
+          key_material: "{{ lookup('file', '~/.ssh/{{ key_name }}.pub') }}"
+          region: "{{ region }}"
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
 
-  - name: Create file reverse_proxy.config with read and write permissions for everyone
-    file:
-      path: /etc/nginx/sites-enabled/reverse_proxy.conf
-      state: touch
-      mode: '666'
+      - name: Provision instance(s)
+        ec2:
+          aws_access_key: "{{ec2_access_key}}"
+          aws_secret_key: "{{ec2_secret_key}}"
+          assign_public_ip: true
+          key_name: "{{ key_name }}"
+          id: "{{ id }}"
+          vpc_subnet_id: "{{ subnet_id }}"
+          group_id: "{{ security_group_id }}"
+          image: "{{ image }}"
+          instance_type: t2.micro
+          region: "{{ region }}"
+          wait: true
+          count: 1
+          instance_tags:
+            Name: eng110_benswen_app_from_ansible
 
-  - name: Inject lines into reverse_proxy.config
-    blockinfile:
-      path: /etc/nginx/sites-enabled/reverse_proxy.conf
-      block: |
-        server{
-          listen 80;
-          server_name development.local;
-          location / {
-              proxy_pass http://localhost:3000;
-              proxy_http_version 1.1;
-              proxy_set_header Upgrade $http_upgrade;
-              proxy_set_header Connection 'upgrade';
-              proxy_set_header Host $host;
-              proxy_cache_bypass $http_upgrade;
-          }
+      tags: ['never', 'create_ec2']
+```
+- After updating the IP in hosts, test connection 
+`sudo ansible aws -m ping --ask-vault-pass`
+
+# EC2 App setup playbook
+- create ancible playbook to set up app
+- `sudo nano set_up_app.yml`
+```
+---
+      # where do we want to install
+- hosts: aws
+
+      # get the facts
+gather_facts: yes
+
+      # changes access to root user
+become: true
+
+tasks:
+
+      # Purge Nginx
+- name: Purge Nginx
+  shell: |
+    sudo apt-get purge nginx nginx-common -y
+
+      # Install Nginx
+- name: Install nginx
+  apt: pkg=nginx state=present
+
+      # Set up reverse proxy
+
+- name: Remove Nginx default file
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Create file reverse_proxy.config with read and write permissions for everyone
+  file:
+    path: /etc/nginx/sites-enabled/reverse_proxy.conf
+    state: touch
+    mode: '666'
+
+- name: Inject lines into reverse_proxy.config
+  blockinfile:
+    path: /etc/nginx/sites-enabled/reverse_proxy.conf
+    block: |
+      server{
+        listen 80;
+        server_name development.local;
+        location / {
+            proxy_pass http://localhost:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
         }
+      }
 
-        # Links the new configuration file to NGINX’s sites-enabled using a command.
+      # Links the new configuration file to NGINX’s sites-enabled using a command.
 
-  - name: link reverse_proxy.config
-    file:
-      src: /etc/nginx/sites-enabled/reverse_proxy.conf
-      dest: /etc/nginx/sites-available/reverse_proxy.conf
-      state: link
+- name: link reverse_proxy.config
+  file:
+    src: /etc/nginx/sites-enabled/reverse_proxy.conf
+    dest: /etc/nginx/sites-available/reverse_proxy.conf
+    state: link
 
-  - name: Restart Nginx
-    shell: |
-      sudo systemctl restart nginx
+- name: Restart Nginx
+  shell: |
+    sudo systemctl restart nginx
 
-        # Gets all the dependencies
+      # Gets all the dependencies
 
-  - name: Install software-properties-common
-    apt: pkg=software-properties-common state=present
+- name: Install software-properties-common
+  apt: pkg=software-properties-common state=present
 
-  - name: Add nodejs apt key
-    apt_key:
-      url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
-      state: present
+- name: Add nodejs apt key
+  apt_key:
+    url: https://deb.nodesource.com/gpgkey/nodesource.gpg.key
+    state: present
 
-  - name: Install nodejs
-    apt_repository:
-      repo: deb https://deb.nodesource.com/node_13.x bionic main
-      update_cache: yes
+- name: Install nodejs
+  apt_repository:
+    repo: deb https://deb.nodesource.com/node_13.x bionic main
+    update_cache: yes
 
-  - name: Install nodejs
-    apt:
-      update_cache: yes
-      name: nodejs
-      state: present
+- name: Install nodejs
+  apt:
+    update_cache: yes
+    name: nodejs
+    state: present
 
-  - name: Install npm
-    shell: |
-      cd app/
-      npm install
+- name: Install npm
+  shell: |
+    cd app/
+    npm install
 
-  - name: Install pm2
-    npm:
-      name: pm2
-      global: yes
+- name: Install pm2
+  npm:
+    name: pm2
+    global: yes
 
-  - name: Run app with specified environment variable
-    shell: |
-      cd app/
-      node seeds/seed.js
-      npm start
-    environment:
-      DB_HOST: mongodb://34.245.27.166:27017/posts
+- name: Run app with specified environment variable
+  shell: |
+    cd app/
+    node seeds/seed.js
+    npm start
+  environment:
+    DB_HOST: mongodb://34.245.27.166:27017/posts
 ```
 
 - `sudo ansible-playbook playbook.yml --ask-vault-pass` - to run and check functionality
